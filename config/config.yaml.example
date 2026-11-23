@@ -1,0 +1,210 @@
+# Google Calendar to Clockify Sync Configuration
+
+google:
+  # Path to OAuth credentials from Google Cloud Console
+  credentials_path: credentials/credentials.json
+
+  # Path to store OAuth tokens (auto-generated)
+  token_path: credentials/token.json
+
+  # Calendar ID to sync from (use 'primary' for your main calendar)
+  calendar_id: primary
+
+clockify:
+  # Clockify workspace ID (find in URL: clockify.me/workspaces/{workspace-id}/...)
+  workspace_id: null
+
+  # Optional: Default project ID to use for all entries
+  # If null, will try to match customer names to project names
+  default_project_id: null
+
+sync:
+  # ============================================================================
+  # FOCUS TIME DETECTION
+  # ============================================================================
+  # Patterns to identify focus time blocks (case-sensitive regex)
+  # These are the large time blocks dedicated to customer work
+  focus_time_patterns:
+    - "^ArcticWolf$"          # Exact match for ArcticWolf
+    - "^Focus:"               # Events starting with "Focus:"
+    - "^Focus Time"           # Events starting with "Focus Time"
+
+  # ============================================================================
+  # CUSTOMER NAME EXTRACTION
+  # ============================================================================
+  # How to extract customer names from event titles
+  # Patterns are tried in order; first match wins
+  customer_name_patterns:
+    # Pattern 1: Single word customer names (ArcticWolf, coinbase, etc.)
+    - "^([A-Z][a-zA-Z0-9]+)$"
+
+    # Pattern 2: "Focus: Customer Name" or "Focus: Customer Name - Topic"
+    - "^Focus:?\\s*([A-Z][a-zA-Z0-9 &.]+?)(?:\\s*-|$)"
+
+    # Pattern 3: "Customer Name - Meeting Topic"
+    - "^([A-Z][a-zA-Z0-9 &.]+?)\\s*-"
+
+  # ============================================================================
+  # INTERNAL MEETING DETECTION
+  # ============================================================================
+  # Patterns to identify internal meetings (not customer-facing)
+  # These meetings will be aggregated under "Internal Meetings" category
+  internal_meeting_patterns:
+    - "(?i)and Josh"          # "Travis and Josh", "Glocer and Josh"
+    - "(?i)All hands"         # All hands meetings
+    - "(?i)1:1"               # One-on-one meetings
+    - "(?i)standup"           # Team standups
+    - "(?i)team meeting"      # General team meetings
+    - "(?i)sync"              # Sync meetings
+
+  # ============================================================================
+  # IGNORED EVENTS
+  # ============================================================================
+  # Events matching these patterns will be completely ignored
+  # (not counted as focus time, meetings, or anything)
+  ignore_patterns:
+    - "(?i)doctor"
+    - "(?i)dentist"
+    - "(?i)vet"
+    - "(?i)pickup Lane"
+    - "(?i)dropoff Lane"
+    - "(?i)personal"
+    - "(?i)lunch"
+    - "(?i)break"
+    - "(?i)OOO"
+    - "(?i)vacation"
+
+  # ============================================================================
+  # TIME CALCULATION SETTINGS
+  # ============================================================================
+  # Minimum event duration to consider (in minutes)
+  # Events shorter than this are ignored
+  minimum_duration_minutes: 15
+
+  # Rounding mode for aggregated time by customer/category
+  # Options: 'nearest', 'up', 'down', 'none'
+  rounding_mode: nearest
+
+  # Rounding mode specifically for internal meetings
+  # Options: 'nearest', 'up', 'down', 'none'
+  # Set to 'up' if you want to always round internal meetings up
+  internal_rounding_mode: up
+
+  # ============================================================================
+  # CLOCKIFY ENTRY SETTINGS
+  # ============================================================================
+  # Template for Clockify entry descriptions
+  # Available variables: {customer_name}, {date}, {hours}
+  description_template: "Focus time: {customer_name}"
+
+  # Name to use for aggregated internal meetings
+  internal_meetings_name: "Internal Meetings"
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+
+  # Log to console
+  console: true
+
+  # Optional: Log file path (null = no file logging)
+  file: null
+
+# ==============================================================================
+# TIMESHEET PIPELINE CONFIGURATION
+# ==============================================================================
+# Read by scripts/generate_timesheet.py and scripts/check_coverage.py (via
+# config/timesheet_config.py), independently of the `google`/`sync`/`logging`
+# sections above. Building this by hand is possible (it's plain YAML), but
+# SETUP.md walks you through it with an agent's help, matching every
+# project/task ID against your real live Clockify data so nothing is a typo
+# or a stale guess. REQUIRED fields are marked below; the tool runs with
+# zero customers, but that's not very useful - add at least one.
+
+clockify:
+  workspace_id: "REPLACE_WITH_YOUR_CLOCKIFY_WORKSPACE_ID"   # REQUIRED
+
+  projects:                        # REQUIRED (all four) - your base Clockify buckets
+    customer: "REPLACE_ME"
+    admin: "REPLACE_ME"
+    technical_assets: "REPLACE_ME"
+    pto: "REPLACE_ME"
+    interviewing: null             # optional; only if you track interviews separately
+
+  tasks:
+    pto_vacation: "REPLACE_ME"       # REQUIRED
+    internal_meetings: "REPLACE_ME"  # REQUIRED
+    slack_catchup: "REPLACE_ME"      # REQUIRED - fallback bucket for unmapped/TBD customers
+    interviewing: null               # optional
+    technical:
+      kubernetes: "REPLACE_ME"       # REQUIRED - at least one named technical task
+      # add more as needed, e.g.:
+      # redpanda: "REPLACE_ME"
+      # upgrade_guide: "REPLACE_ME"
+    generic_technical_category_task: kubernetes   # REQUIRED - which tasks.technical.*
+                                                     # key the generic "technical" bucket uses
+
+timezone: "America/Chicago"   # REQUIRED - IANA name (e.g. America/New_York, Europe/London)
+
+customers:
+  # Example only - delete this and add your own via SETUP.md or by hand.
+  # `project` is a key into clockify.projects above, or a literal project id.
+  example-customer:
+    project: customer
+    task_id: "REPLACE_ME"
+    aliases: ["example co", "examplecorp"]
+    domains: ["example.com"]
+
+title_overrides: {}          # exact lowercased event title -> customer key
+title_regex_overrides: []    # - {pattern: "...", customer: "..."}
+
+classification:
+  # Generic starting defaults - extend with your own coworker-name/personal
+  # patterns as you notice events being misclassified.
+  pto_patterns:
+    - '(?i)\bOOO\b'
+    - '(?i)\bvacation\b'
+    - '(?i)\bpublic holiday\b'
+  ignore_patterns:
+    - '(?i)doctor'
+    - '(?i)dentist'
+    - '(?i)\bvet\b'
+    - '(?i)personal'
+    - '(?i)lunch'
+    - '(?i)break'
+  internal_patterns:
+    - '(?i)\ball.?hands\b'
+    - '(?i)\b1:1\b'
+    - '(?i)standup'
+    - '(?i)office hours'
+  interview_patterns:
+    - '(?i)interview'
+    - '(?i)group presentation'
+  customer_title_patterns:
+    - {pattern: '(?i)(\w[\w\s.]+?)\s*<>\s*Redpanda', group: 1}
+    - {pattern: '(?i)Redpanda\s*<>\s*(\w[\w\s.]+?)(?:\s*[-|]|$)', group: 1}
+  technical_title_literals: []     # e.g. ["wasm", "upgrade bugs"]
+  internal_fallback_max_attendees: 10
+
+ooo:
+  dates: []                       # explicit full 8h PTO weekdays, e.g. ["2026-03-19"]
+  partial_pto_exclude_dates: []   # dates excluded from auto all-day-OOO -> 8h PTO expansion
+
+session_scan:
+  # Privacy gate for check_coverage.py's Claude Code session cross-reference.
+  #   none      - (default) scan nothing; no filesystem access outside this repo
+  #   this_repo - only this repo's own Claude Code session directory
+  #   allowlist - only the paths listed in allowed_paths below
+  #   all       - every project under ~/.claude/projects (today's original,
+  #               unscoped behavior - powerful, but reads prompt text from
+  #               every unrelated project on your machine)
+  mode: none
+  allowed_paths: []
+
+yapa:
+  # Optional cross-reference against a local YAPA/ChromaDB instance.
+  enabled: false
+  chroma_url: "http://localhost:8000"
